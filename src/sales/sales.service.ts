@@ -20,10 +20,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { ListSalesDto } from './dto/list-sales.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
+import { priceLine } from './pricing';
 
 const D = (v: Prisma.Decimal | string | number) => new Prisma.Decimal(v);
-const round2 = (d: Prisma.Decimal) =>
-  d.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
 const saleInclude = {
   items: true,
@@ -156,10 +155,7 @@ export class SalesService {
     const lines = ids.map((id) => {
       const p = byId.get(id)!;
       const quantity = qtyById.get(id)!;
-      const lineTotal = round2(p.price.mul(quantity));
-      const taxAmount = round2(
-        lineTotal.mul(p.taxRate).div(D(100).add(p.taxRate)),
-      );
+      const { lineTotal, taxAmount } = priceLine(p.price, p.taxRate, quantity);
       total = total.add(lineTotal);
       taxTotal = taxTotal.add(taxAmount);
       return {
@@ -168,6 +164,7 @@ export class SalesService {
         quantity,
         unitPrice: p.price,
         unitCost: p.costPrice,
+        taxRate: p.taxRate,
         taxAmount,
         lineTotal,
       };

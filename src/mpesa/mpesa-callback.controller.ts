@@ -1,7 +1,9 @@
 import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
 import { MpesaService } from './mpesa.service';
+import { SkipThrottle } from '@nestjs/throttler';
 
+@SkipThrottle()
 @Controller('payments/hooks')
 export class MpesaCallbackController {
   constructor(private readonly mpesa: MpesaService) {}

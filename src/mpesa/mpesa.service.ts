@@ -234,6 +234,27 @@ export class MpesaService {
         : undefined;
     }
 
+    if (
+      code === 0 &&
+      rec.status === MpesaStatus.PENDING &&
+      this.config.get('MPESA_VERIFY_CALLBACKS', 'false') === 'true'
+    ) {
+      try {
+        const { json } = await this.client.stkQuery(rec.checkoutRequestId!);
+        if (Number(json.ResultCode) !== 0) {
+          this.logger.error(
+            `Callback claimed success for ${rec.id} but Daraja says: ${JSON.stringify(json)}`,
+          );
+          return ACK; // stays PENDING; the status polling resolves it later
+        }
+      } catch (e) {
+        this.logger.warn(
+          `Could not verify callback for ${rec.id}: ${(e as Error).message}`,
+        );
+        return ACK;
+      }
+    }
+
     if (rec.status === MpesaStatus.PENDING) {
       await this.settle(rec.id, code, cb.ResultDesc, receipt);
     } else if (rec.status === MpesaStatus.SUCCESS && !rec.receipt && receipt) {
