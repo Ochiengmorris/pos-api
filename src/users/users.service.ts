@@ -131,7 +131,7 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     const ok = await bcrypt.compare(dto.currentPassword, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('Current password is incorrect');
+    if (!ok) throw new BadRequestException('Current password is incorrect');
 
     await this.prisma.user.update({
       where: { id: actor.id },

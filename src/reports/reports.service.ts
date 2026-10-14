@@ -416,7 +416,7 @@ export class ReportsService {
       }),
       this.inventory.summary(),
       this.prisma.mpesaPayment.count({
-        where: { status: MpesaStatus.SUCCESS, saleId: null },
+        where: { status: MpesaStatus.SUCCESS, saleId: null, resolution: null },
       }),
     ]);
 

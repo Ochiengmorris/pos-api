@@ -21,6 +21,7 @@ import { CreateSaleDto } from './dto/create-sale.dto';
 import { ListSalesDto } from './dto/list-sales.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { priceLine } from './pricing';
+import { SettingsService } from '../settings/settings.service';
 
 const D = (v: Prisma.Decimal | string | number) => new Prisma.Decimal(v);
 
@@ -39,6 +40,7 @@ export class SalesService {
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
     private readonly config: ConfigService,
+    private readonly settings: SettingsService,
   ) {
     this.prefix = this.config.get<string>('RECEIPT_PREFIX', 'RCP');
   }
@@ -213,6 +215,10 @@ export class SalesService {
         }
         if (rec.saleId)
           throw new ConflictException('M-Pesa payment already used on a sale');
+        if (rec.resolution)
+          throw new ConflictException(
+            'That M-Pesa payment was already resolved by a manager',
+          );
         if (!rec.amount.eq(amount)) {
           throw new BadRequestException(
             `M-Pesa payment was for KSh ${rec.amount.toFixed(0)}, not ${amount.toFixed(2)}`,
@@ -280,6 +286,7 @@ export class SalesService {
         where: {
           id: p.mpesaPaymentId,
           saleId: null,
+          resolution: null,
           status: MpesaStatus.SUCCESS,
         },
         data: { saleId: sale.id },
@@ -363,13 +370,17 @@ export class SalesService {
   }
 
   async receipt(id: string, actor: AuthUser) {
-    const sale = await this.findOne(id, actor);
+    const [sale, store] = await Promise.all([
+      this.findOne(id, actor),
+      this.settings.get(),
+    ]);
     return {
       store: {
-        name: this.config.get('STORE_NAME', 'My Shop'),
-        address: this.config.get('STORE_ADDRESS', ''),
-        phone: this.config.get('STORE_PHONE', ''),
-        taxPin: this.config.get('STORE_TAX_PIN', ''),
+        name: store.name,
+        address: store.address,
+        phone: store.phone,
+        taxPin: store.taxPin,
+        footer: store.receiptFooter,
       },
       receiptNo: sale.receiptNo,
       date: sale.createdAt,

@@ -5,6 +5,7 @@ import type { AuthUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { InitiateStkDto } from './dto/initiate-stk.dto';
 import { MpesaService } from './mpesa.service';
+import { ResolveMpesaDto } from './dto/resolve-mpesa.dto';
 
 @Controller('payments/mpesa')
 export class MpesaController {
@@ -19,6 +20,16 @@ export class MpesaController {
   @Get('unclaimed')
   unclaimed() {
     return this.mpesa.unclaimed();
+  }
+
+  @Roles(Role.MANAGER)
+  @Post(':id/resolve')
+  resolve(
+    @Param('id') id: string,
+    @Body() dto: ResolveMpesaDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.mpesa.resolve(id, dto, user);
   }
 
   @Get(':id')

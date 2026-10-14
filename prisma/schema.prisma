@@ -26,6 +26,11 @@ enum MpesaStatus {
   TIMEOUT
 }
 
+enum MpesaResolution {
+  REFUNDED
+  WRITTEN_OFF
+}
+
 enum SaleStatus {
   COMPLETED
   VOIDED
@@ -191,6 +196,11 @@ model MpesaPayment {
   cashier User  @relation(fields: [cashierId], references: [id])
   sale    Sale? @relation(fields: [saleId], references: [id])
 
+  resolution     MpesaResolution?
+  resolutionNote String?
+  resolvedAt     DateTime?
+  resolvedById   String?
+
   @@index([status, createdAt])
   @@index([cashierId])
   @@index([saleId])
@@ -211,4 +221,15 @@ model StockMovement {
   sale    Sale?   @relation(fields: [saleId], references: [id])
 
   @@index([productId, createdAt])
+}
+
+model StoreSettings {
+  id            String   @id @default("store")
+  name          String
+  address       String   @default("")
+  phone         String   @default("")
+  taxPin        String   @default("")
+  receiptFooter String   @default("Thank you for shopping with us!")
+  updatedAt     DateTime @updatedAt
+  updatedById   String?
 }

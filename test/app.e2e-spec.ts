@@ -47,6 +47,29 @@ describe('POS API (e2e)', () => {
     c2Token = await login(app, 'cashier2@test.local');
   });
 
+  describe('store settings', () => {
+    it('lets only admins change them, and receipts use them', async () => {
+      await api()
+        .patch('/api/v1/settings/store')
+        .set(auth(c1Token))
+        .send({ name: 'Nope' })
+        .expect(403);
+      await api()
+        .patch('/api/v1/settings/store')
+        .set(auth(adminToken))
+        .send({ name: 'Mama Njeri Mart', taxPin: 'P000000000A' })
+        .expect(200);
+
+      const made = await sale(c1Token, 1, [cash(70)]).expect(201);
+      const res = await api()
+        .get(`/api/v1/sales/${made.body.id}/receipt`)
+        .set(auth(c1Token))
+        .expect(200);
+      expect(res.body.store.name).toBe('Mama Njeri Mart');
+      expect(res.body.store.taxPin).toBe('P000000000A');
+    });
+  });
+
   describe('auth and roles', () => {
     it('rejects bad credentials and missing tokens', async () => {
       await api()

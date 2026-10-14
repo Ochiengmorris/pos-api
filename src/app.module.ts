@@ -15,6 +15,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ReportsModule } from './reports/reports.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { HealthController } from './health/health.controller';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { HealthController } from './health/health.controller';
     MpesaModule,
     ScheduleModule.forRoot(),
     ReportsModule,
+    SettingsModule,
   ],
   controllers: [HealthController],
   providers: [

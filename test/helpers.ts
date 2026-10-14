@@ -32,7 +32,7 @@ export async function createApp(): Promise<INestApplication> {
 export async function resetDb() {
   assertTestDb();
   await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "StockMovement","Payment","SaleItem","MpesaPayment","Sale","Customer","Product","Category","User" RESTART IDENTITY CASCADE`,
+    `TRUNCATE TABLE "StockMovement","Payment","SaleItem","MpesaPayment","StoreSettings","Sale","Customer","Product","Category","User" RESTART IDENTITY CASCADE`,
   );
 }
 

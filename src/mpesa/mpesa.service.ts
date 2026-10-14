@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -15,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InitiateStkDto } from './dto/initiate-stk.dto';
 import { MpesaClient } from './mpesa.client';
 import { normalizeKenyanPhone } from './phone.util';
+import { ResolveMpesaDto } from './dto/resolve-mpesa.dto';
 
 const ACK = { ResultCode: 0, ResultDesc: 'Accepted' };
 
@@ -272,12 +274,36 @@ export class MpesaService {
   // Money received but never attached to a sale
   async unclaimed() {
     const items = await this.prisma.mpesaPayment.findMany({
-      where: { status: MpesaStatus.SUCCESS, saleId: null },
+      where: { status: MpesaStatus.SUCCESS, saleId: null, resolution: null },
       include: { cashier: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
     return items.map((r) => ({ ...this.present(r), cashier: r.cashier }));
+  }
+
+  // A manager records what happened to money that arrived without a sale
+  async resolve(id: string, dto: ResolveMpesaDto, actor: AuthUser) {
+    const res = await this.prisma.mpesaPayment.updateMany({
+      where: {
+        id,
+        status: MpesaStatus.SUCCESS,
+        saleId: null,
+        resolution: null,
+      },
+      data: {
+        resolution: dto.resolution,
+        resolutionNote: dto.note.trim(),
+        resolvedAt: new Date(),
+        resolvedById: actor.id,
+      },
+    });
+    if (res.count === 0) {
+      throw new BadRequestException(
+        'Payment not found, already attached to a sale, or already resolved',
+      );
+    }
+    return { message: 'Payment resolved' };
   }
 
   // Resolve abandoned PENDING requests (browser closed, callback lost)
