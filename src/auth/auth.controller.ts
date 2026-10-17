@@ -5,6 +5,7 @@ import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthUser } from './decorators/current-user.decorator';
 import { Throttle } from '@nestjs/throttler';
+import { AllowPendingPassword } from './decorators/allow-pending-password.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -18,6 +19,7 @@ export class AuthController {
     return this.auth.login(dto);
   }
 
+  @AllowPendingPassword()
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
     return user;

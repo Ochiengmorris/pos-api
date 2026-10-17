@@ -16,6 +16,7 @@ import { ReportsModule } from './reports/reports.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { HealthController } from './health/health.controller';
 import { SettingsModule } from './settings/settings.module';
+import { PasswordChangeGuard } from './auth/guards/password-change.guard';
 
 @Module({
   imports: [
@@ -43,7 +44,8 @@ import { SettingsModule } from './settings/settings.module';
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard }, // 1st: rate limit
     { provide: APP_GUARD, useClass: JwtAuthGuard }, // 2nd: authenticate
-    { provide: APP_GUARD, useClass: RolesGuard }, // 3rd: authorize
+    { provide: APP_GUARD, useClass: PasswordChangeGuard },
+    { provide: APP_GUARD, useClass: RolesGuard }, // 4th: authorize
   ],
 })
 export class AppModule {}

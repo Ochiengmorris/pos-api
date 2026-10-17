@@ -334,4 +334,46 @@ describe('POS API (e2e)', () => {
       expect(o.voids.count).toBe(1);
     });
   });
+
+  describe('forced password change', () => {
+    it('blocks a new account from everything but changing its password', async () => {
+      await api()
+        .post('/api/v1/users')
+        .set(auth(adminToken))
+        .send({
+          email: 'new@test.local',
+          name: 'New Person',
+          password: 'temporary1',
+          role: 'CASHIER',
+        })
+        .expect(201);
+
+      const login = await api()
+        .post('/api/v1/auth/login')
+        .send({ email: 'new@test.local', password: 'temporary1' })
+        .expect(200);
+      expect(login.body.user.mustChangePassword).toBe(true);
+      const token: string = login.body.accessToken;
+
+      const blocked = await api()
+        .get('/api/v1/products')
+        .set(auth(token))
+        .expect(403);
+      expect(blocked.body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+      await api().get('/api/v1/auth/me').set(auth(token)).expect(200); // still allowed
+
+      await api()
+        .patch('/api/v1/users/me/password')
+        .set(auth(token))
+        .send({ currentPassword: 'temporary1', newPassword: 'temporary1' })
+        .expect(400); // must differ
+      await api()
+        .patch('/api/v1/users/me/password')
+        .set(auth(token))
+        .send({ currentPassword: 'temporary1', newPassword: 'my-own-password' })
+        .expect(200);
+
+      await api().get('/api/v1/products').set(auth(token)).expect(200); // unblocked straight away
+    });
+  });
 });

@@ -6,6 +6,7 @@ export type AuthUser = {
   email: string;
   name: string;
   role: Role;
+  mustChangePassword: boolean;
 };
 
 export const CurrentUser = createParamDecorator(

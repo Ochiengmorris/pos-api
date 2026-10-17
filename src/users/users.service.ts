@@ -24,6 +24,7 @@ const publicSelect = {
   isActive: true,
   createdAt: true,
   updatedAt: true,
+  mustChangePassword: true,
 } satisfies Prisma.UserSelect;
 
 @Injectable()
@@ -41,6 +42,7 @@ export class UsersService {
         name: dto.name.trim(),
         role: dto.role,
         passwordHash: await bcrypt.hash(dto.password, 12),
+        mustChangePassword: true,
       },
       select: publicSelect,
     });
@@ -117,11 +119,14 @@ export class UsersService {
     });
   }
 
-  async resetPassword(id: string, dto: ResetPasswordDto) {
+  async resetPassword(id: string, dto: ResetPasswordDto, actor: AuthUser) {
     await this.findOne(id);
     await this.prisma.user.update({
       where: { id },
-      data: { passwordHash: await bcrypt.hash(dto.newPassword, 12) },
+      data: {
+        passwordHash: await bcrypt.hash(dto.newPassword, 12),
+        mustChangePassword: id !== actor.id,
+      },
     });
     return { message: 'Password reset' };
   }
@@ -133,9 +138,18 @@ export class UsersService {
     const ok = await bcrypt.compare(dto.currentPassword, user.passwordHash);
     if (!ok) throw new BadRequestException('Current password is incorrect');
 
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'Choose a password different from your current one',
+      );
+    }
+
     await this.prisma.user.update({
       where: { id: actor.id },
-      data: { passwordHash: await bcrypt.hash(dto.newPassword, 12) },
+      data: {
+        passwordHash: await bcrypt.hash(dto.newPassword, 12),
+        mustChangePassword: false,
+      },
     });
     return { message: 'Password changed' };
   }

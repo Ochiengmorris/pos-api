@@ -17,12 +17,14 @@ import { ListUsersDto } from './dto/list-users.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
+import { AllowPendingPassword } from '../auth/decorators/allow-pending-password.decorator';
 
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   // Any logged-in user (no @Roles)
+  @AllowPendingPassword()
   @Patch('me/password')
   changeOwnPassword(
     @CurrentUser() user: AuthUser,
@@ -62,7 +64,11 @@ export class UsersController {
 
   @Roles(Role.ADMIN)
   @Patch(':id/password')
-  resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto) {
-    return this.users.resetPassword(id, dto);
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.users.resetPassword(id, dto, actor);
   }
 }

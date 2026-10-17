@@ -19,6 +19,10 @@ import { normalizeKenyanPhone } from './phone.util';
 import { ResolveMpesaDto } from './dto/resolve-mpesa.dto';
 
 const ACK = { ResultCode: 0, ResultDesc: 'Accepted' };
+// Query results that are final failures. Anything else that isn't 0 is treated as "still waiting".
+// Extend this list when the warning log below shows you a new code.
+const FINAL_FAILURE_CODES = new Set([1, 1001, 1019, 1025, 1032, 1037, 2001]);
+const STALE_AFTER_MS = 5 * 60_000;
 
 @Injectable()
 export class MpesaService {
@@ -146,13 +150,28 @@ export class MpesaService {
 
     try {
       const { json } = await this.client.stkQuery(rec.checkoutRequestId!);
-      if (json.ResultCode === undefined) return rec; // still processing
-      return this.settle(rec.id, Number(json.ResultCode), json.ResultDesc);
+      const code =
+        json.ResultCode === undefined ? NaN : Number(json.ResultCode);
+
+      if (code === 0 || FINAL_FAILURE_CODES.has(code)) {
+        return this.settle(rec.id, code, json.ResultDesc);
+      }
+
+      if (!Number.isNaN(code) && code !== 4999) {
+        this.logger.warn(
+          `Unrecognised STK query result ${code} for ${rec.id}: ${json.ResultDesc}`,
+        );
+      }
+
+      // Not decided yet: keep waiting. Only after a long silence give up (a late success can still replace this).
+      return age > STALE_AFTER_MS
+        ? this.settle(rec.id, 1037, 'No confirmation received from M-Pesa')
+        : rec;
     } catch (e) {
       this.logger.warn(
         `STK query failed for ${rec.id}: ${(e as Error).message}`,
       );
-      return rec;
+      return rec; // our own network problem says nothing about the payment
     }
   }
 
@@ -172,8 +191,20 @@ export class MpesaService {
             ? MpesaStatus.TIMEOUT // customer didn't respond
             : MpesaStatus.FAILED; // wrong PIN, insufficient funds, etc.
 
+    // Money in hand always wins: a confirmed payment may replace an earlier failed or timed-out label,
+    // but a failure never overwrites a success.
+    const replaceable =
+      code === 0
+        ? [
+            MpesaStatus.PENDING,
+            MpesaStatus.FAILED,
+            MpesaStatus.TIMEOUT,
+            MpesaStatus.CANCELLED,
+          ]
+        : [MpesaStatus.PENDING];
+
     await this.prisma.mpesaPayment.updateMany({
-      where: { id, status: MpesaStatus.PENDING },
+      where: { id, status: { in: replaceable } },
       data: {
         status,
         resultCode: code,
@@ -238,7 +269,7 @@ export class MpesaService {
 
     if (
       code === 0 &&
-      rec.status === MpesaStatus.PENDING &&
+      rec.status !== MpesaStatus.SUCCESS &&
       this.config.get('MPESA_VERIFY_CALLBACKS', 'false') === 'true'
     ) {
       try {
@@ -257,13 +288,27 @@ export class MpesaService {
       }
     }
 
-    if (rec.status === MpesaStatus.PENDING) {
+    if (rec.status !== MpesaStatus.SUCCESS) {
       await this.settle(rec.id, code, cb.ResultDesc, receipt);
     } else if (rec.status === MpesaStatus.SUCCESS && !rec.receipt && receipt) {
-      // Settled earlier via query (which has no receipt code): backfill it
-      await this.prisma.mpesaPayment.update({
-        where: { id: rec.id },
-        data: { receipt },
+      // Settled earlier by a status check, which has no receipt code. Fill it in now,
+      // and on the sale's receipt too if a sale has already claimed this payment.
+      await this.prisma.$transaction(async (tx) => {
+        await tx.mpesaPayment.update({
+          where: { id: rec.id },
+          data: { receipt },
+        });
+        if (rec.saleId) {
+          await tx.payment.updateMany({
+            where: {
+              saleId: rec.saleId,
+              method: 'MPESA',
+              reference: null,
+              amount: rec.amount,
+            },
+            data: { reference: receipt },
+          });
+        }
       });
     }
     return ACK;

@@ -233,7 +233,7 @@ export class SalesService {
           method: p.method,
           status: PaymentStatus.SUCCESS,
           amount,
-          reference: rec.receipt ?? rec.checkoutRequestId,
+          reference: rec.receipt,
         };
       }
 
