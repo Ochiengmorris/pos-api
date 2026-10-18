@@ -56,6 +56,38 @@ enum StockMovementType {
   RETURN
 }
 
+enum TaxTypeCode {
+  A
+  B
+  C
+  D
+  E
+}
+
+enum TaxInvoiceType {
+  SALE
+  CREDIT_NOTE
+}
+
+enum TaxInvoiceStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  FAILED
+  UNCERTAIN
+  CANCELLED
+}
+
+enum EtimsJobStatus {
+  QUEUED
+  RUNNING
+  RETRY
+  DONE
+  FAILED
+  UNCERTAIN
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -99,6 +131,13 @@ model Product {
   saleItems      SaleItem[]
   stockMovements StockMovement[]
 
+  taxTyCd        TaxTypeCode @default(B)
+  taxConfirmed   Boolean     @default(false) // the owner/accountant has reviewed this product's VAT class
+  etimsSeq       Int         @unique @default(autoincrement())
+  etimsItemClsCd String? // KRA item classification (needed for live item registration)
+  pkgUnitCd      String      @default("NT")
+  qtyUnitCd      String      @default("U")
+
   @@index([name])
   @@index([categoryId])
 }
@@ -131,10 +170,11 @@ model Sale {
   stockMovements StockMovement[]
   mpesaPayments  MpesaPayment[]
 
-  clientRequestId String?   @unique // idempotency key from the client
+  clientRequestId String?      @unique // idempotency key from the client
   voidedAt        DateTime?
   voidReason      String?
   voidedById      String?
+  taxInvoices     TaxInvoice[]
 
   @@index([createdAt])
   @@index([cashierId])
@@ -155,6 +195,8 @@ model SaleItem {
 
   sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
+
+  taxTyCd TaxTypeCode @default(B)
 
   @@index([saleId])
   @@index([productId])
@@ -234,4 +276,98 @@ model StoreSettings {
   receiptFooter String   @default("Thank you for shopping with us!")
   updatedAt     DateTime @updatedAt
   updatedById   String?
+}
+
+// the five KRA tax classes and their rates (editable here, never hardcoded in calculations)
+model TaxType {
+  code        TaxTypeCode @id
+  name        String
+  rate        Decimal     @db.Decimal(5, 2)
+  updatedAt   DateTime    @updatedAt
+  updatedById String?
+}
+
+model TaxInvoice {
+  id                String           @id @default(cuid())
+  saleId            String
+  type              TaxInvoiceType   @default(SALE)
+  internalNo        String           @unique
+  status            TaxInvoiceStatus @default(PENDING)
+  environment       String // MOCK | SANDBOX | PRODUCTION: which provider handled it
+  originalInvoiceId String? // for credit notes
+  invcNo            Int? // KRA invoice number, assigned at first transmission
+  customerPin       String?
+  customerName      String?
+  payload           Json // the request body (no credentials), kept for audit and retries
+
+  // returned by KRA on acceptance
+  receiptNo      Int?
+  totalReceiptNo Int?
+  intrlData      String?
+  rcptSign       String?
+  sdcId          String?
+  mrcNo          String?
+  sdcDateTime    String?
+  qrPayload      String?
+
+  submittedAt      DateTime?
+  acceptedAt       DateTime?
+  lastAttemptAt    DateTime?
+  attemptCount     Int       @default(0)
+  lastErrorCode    String?
+  lastErrorMessage String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  sale   Sale         @relation(fields: [saleId], references: [id])
+  job    EtimsJob?
+  events EtimsEvent[]
+
+  officialPrintCount Int @default(0) // times the accepted invoice has been printed; later prints are labelled COPY
+
+  @@unique([saleId, type])
+  @@index([status, createdAt])
+}
+
+model EtimsJob {
+  id             String         @id @default(cuid())
+  invoiceId      String         @unique
+  idempotencyKey String         @unique
+  status         EtimsJobStatus @default(QUEUED)
+  attempts       Int            @default(0)
+  nextAttemptAt  DateTime       @default(now())
+  lockedUntil    DateTime?
+  sentAt         DateTime? // set before a request goes out: if present, the outcome may be unknown
+  lastError      String?
+  correlationId  String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  invoice TaxInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([status, nextAttemptAt])
+}
+
+// audit trail: every state change, retry and manual action
+model EtimsEvent {
+  id            String   @id @default(cuid())
+  invoiceId     String
+  type          String
+  message       String?
+  data          Json?
+  actorId       String?
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  invoice TaxInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId, createdAt])
+}
+
+model EtimsSequence {
+  tin    String
+  bhfId  String
+  nextNo Int
+
+  @@id([tin, bhfId])
 }

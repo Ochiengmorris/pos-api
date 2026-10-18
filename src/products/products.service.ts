@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, Role, StockMovementType } from '@prisma/client';
+import { Prisma, Role, StockMovementType, TaxTypeCode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -54,6 +54,26 @@ export class ProductsService {
     if (!found) throw new NotFoundException('Category not found');
   }
 
+  // Tax class and rate always travel together. Anything not explicitly classified stays "unconfirmed".
+  private async resolveTax(dto: { taxTyCd?: TaxTypeCode; taxRate?: number }) {
+    if (dto.taxTyCd) {
+      const t = await this.prisma.taxType.findUnique({
+        where: { code: dto.taxTyCd },
+      });
+      return {
+        taxTyCd: dto.taxTyCd,
+        taxRate: t?.rate ?? 0,
+        taxConfirmed: true,
+      };
+    }
+    if (dto.taxRate !== undefined) {
+      const taxTyCd: TaxTypeCode =
+        dto.taxRate === 16 ? 'B' : dto.taxRate === 8 ? 'E' : 'A';
+      return { taxTyCd, taxRate: dto.taxRate, taxConfirmed: false };
+    }
+    return {};
+  }
+
   async create(dto: CreateProductDto, actor: AuthUser) {
     const sku = dto.sku.trim();
     const barcode = dto.barcode?.trim() || undefined;
@@ -70,6 +90,7 @@ export class ProductsService {
           barcode,
           name: dto.name.trim(),
           stockQty: initialStock,
+          ...(await this.resolveTax(dto)),
         },
         include: { category: true },
       });
@@ -171,6 +192,7 @@ export class ProductsService {
         ...(sku && { sku }),
         ...(barcode && { barcode }),
         ...(dto.name && { name: dto.name.trim() }),
+        ...(await this.resolveTax(dto)),
       },
       include: { category: true },
     });

@@ -1,6 +1,8 @@
+import { TaxTypeCode } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
@@ -58,4 +60,7 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   initialStock?: number;
+
+  @IsEnum(TaxTypeCode)
+  taxTyCd?: TaxTypeCode;
 }
