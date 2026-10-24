@@ -43,7 +43,11 @@ export class ProductsController {
 
   @Roles(Role.MANAGER)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
-    return this.products.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.products.update(id, dto, user);
   }
 }

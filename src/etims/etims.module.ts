@@ -6,6 +6,7 @@ import { EtimsService } from './etims.service';
 import { EtimsWorker } from './etims.worker';
 import { ETIMS_PROVIDER } from './etims.types';
 import { MockEtimsProvider } from './providers/mock.provider';
+import { EtimsAlerts } from './etims.alert';
 
 @Module({
   imports: [SettingsModule],
@@ -15,6 +16,7 @@ import { MockEtimsProvider } from './providers/mock.provider';
     MockEtimsProvider,
     EtimsService,
     EtimsWorker,
+    EtimsAlerts,
     {
       provide: ETIMS_PROVIDER,
       inject: [EtimsConfig, MockEtimsProvider],

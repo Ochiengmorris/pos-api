@@ -45,4 +45,10 @@ export class EtimsConfig {
   get mockMode() {
     return this.c.get<string>('MOCK_ETIMS_MODE', 'ok');
   }
+  get stuckMinutes() {
+    return Number(this.c.get('ETIMS_STUCK_MINUTES', '15'));
+  }
+  get alertWebhookUrl() {
+    return this.c.get<string>('ETIMS_ALERT_WEBHOOK_URL', '');
+  }
 }

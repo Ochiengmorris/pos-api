@@ -301,14 +301,16 @@ model TaxInvoice {
   payload           Json // the request body (no credentials), kept for audit and retries
 
   // returned by KRA on acceptance
-  receiptNo      Int?
-  totalReceiptNo Int?
-  intrlData      String?
-  rcptSign       String?
-  sdcId          String?
-  mrcNo          String?
-  sdcDateTime    String?
-  qrPayload      String?
+  receiptNo            Int?
+  totalReceiptNo       Int?
+  intrlData            String?
+  rcptSign             String?
+  sdcId                String?
+  mrcNo                String?
+  sdcDateTime          String?
+  qrPayload            String?
+  manuallyResolvedAt   DateTime?
+  manuallyResolvedById String?
 
   submittedAt      DateTime?
   acceptedAt       DateTime?
@@ -370,4 +372,18 @@ model EtimsSequence {
   nextNo Int
 
   @@id([tin, bhfId])
+}
+
+// who changed what, for anything tax-relevant
+model AuditLog {
+  id        String   @id @default(cuid())
+  entity    String // "TaxType", "Product"
+  entityId  String
+  action    String // "RATE_CHANGED", "TAX_CLASS_CHANGED", "TAX_CLASS_CONFIRMED"
+  before    Json?
+  after     Json?
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId, createdAt])
 }

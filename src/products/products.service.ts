@@ -9,6 +9,7 @@ import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ListProductsDto } from './dto/list-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { audit } from '../audit/audit';
 
 @Injectable()
 export class ProductsService {
@@ -176,7 +177,7 @@ export class ProductsService {
     return this.shape(product, actor);
   }
 
-  async update(id: string, dto: UpdateProductDto) {
+  async update(id: string, dto: UpdateProductDto, actor: AuthUser) {
     const existing = await this.prisma.product.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Product not found');
 
@@ -185,14 +186,27 @@ export class ProductsService {
     await this.assertUnique(sku, barcode, id);
     await this.assertCategory(dto.categoryId);
 
+    const tax = await this.resolveTax(dto);
+
+    if (tax.taxTyCd && tax.taxTyCd !== existing.taxTyCd) {
+      await audit(this.prisma, {
+        entity: 'Product',
+        entityId: id,
+        action: 'TAX_CLASS_CHANGED',
+        before: { taxTyCd: existing.taxTyCd },
+        after: { taxTyCd: tax.taxTyCd },
+        actorId: actor.id,
+      });
+    }
+
     return this.prisma.product.update({
       where: { id },
       data: {
         ...dto,
+        ...tax,
         ...(sku && { sku }),
         ...(barcode && { barcode }),
         ...(dto.name && { name: dto.name.trim() }),
-        ...(await this.resolveTax(dto)),
       },
       include: { category: true },
     });

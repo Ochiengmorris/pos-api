@@ -9,6 +9,7 @@ import {
   type SalesPayload,
   type SubmitResult,
 } from './etims.types';
+import { EtimsAlerts } from './etims.alert';
 
 const cut = (s: string, n = 500) => s.slice(0, n);
 
@@ -20,6 +21,7 @@ export class EtimsWorker {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cfg: EtimsConfig,
+    private readonly alerts: EtimsAlerts,
     @Inject(ETIMS_PROVIDER) private readonly provider: ETimsProvider,
   ) {}
 
@@ -276,6 +278,11 @@ export class EtimsWorker {
     this.logger.error(
       `eTIMS invoice ${inv.internalNo} was rejected (${code}): ${message}`,
     );
+    await this.alerts.invoiceNeedsAttention(
+      inv,
+      'REJECTED',
+      `${code}: ${message}`,
+    );
   }
 
   // Exponential backoff with jitter: 30s, 1m, 2m, 4m ... capped at 1 hour
@@ -333,11 +340,9 @@ export class EtimsWorker {
         },
       }),
     ]);
-
-    if (exhausted || attempts >= 3) {
-      this.logger.error(
-        `eTIMS invoice ${inv.internalNo} needs attention (attempt ${attempts}${exhausted ? ', gave up' : ''}): ${note}`,
-      );
-    }
+    if (exhausted)
+      await this.alerts.invoiceNeedsAttention(inv, 'GAVE_UP', note);
+    else if (attempts === 3)
+      await this.alerts.invoiceNeedsAttention(inv, 'REPEATED_FAILURES', note);
   }
 }

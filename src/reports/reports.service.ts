@@ -5,6 +5,7 @@ import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { InventoryService } from '../inventory/inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftDto, TopProductsDto, TrendDto } from './dto/report-query.dto';
+import { EtimsService } from '../etims/etims.service';
 
 type Range = { from: string; to: string }; // inclusive business days, YYYY-MM-DD
 
@@ -38,6 +39,7 @@ export class ReportsService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly inventory: InventoryService,
+    private readonly etims: EtimsService,
   ) {
     this.tz = this.config.get<string>('BUSINESS_TZ', 'Africa/Nairobi');
   }
@@ -382,6 +384,7 @@ export class ReportsService {
       lowStock,
       recent,
       inventory,
+      etimsAttention,
       unclaimedMpesa,
     ] = await Promise.all([
       this.overviewFor(day),
@@ -415,6 +418,7 @@ export class ReportsService {
         },
       }),
       this.inventory.summary(),
+      this.etims.attentionCount(),
       this.prisma.mpesaPayment.count({
         where: { status: MpesaStatus.SUCCESS, saleId: null, resolution: null },
       }),
@@ -436,7 +440,7 @@ export class ReportsService {
         methods: [...new Set(s.payments.map((p) => p.method))],
       })),
       inventory,
-      alerts: { unclaimedMpesa },
+      alerts: { unclaimedMpesa, etimsAttention },
     };
   }
 }
