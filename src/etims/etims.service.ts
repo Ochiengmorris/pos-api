@@ -150,7 +150,8 @@ export class EtimsService implements OnModuleInit {
     const store = await this.settings.get();
 
     const payload = buildSalePayload({
-      tin: this.cfg.tin || 'A123456789Z',
+      // tin: this.cfg.tin || 'A123456789Z',
+      tin: this.cfg.tin,
       bhfId: this.cfg.bhfId,
       basis: this.cfg.taxableBasis,
       internalNo: a.internalNo,

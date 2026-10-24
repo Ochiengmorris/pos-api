@@ -18,10 +18,14 @@ import { HealthController } from './health/health.controller';
 import { SettingsModule } from './settings/settings.module';
 import { PasswordChangeGuard } from './auth/guards/password-change.guard';
 import { EtimsModule } from './etims/etims.module';
+import { validateEnv } from './config/env.validation';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: validateEnv,
+    }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
