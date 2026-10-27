@@ -22,6 +22,7 @@ import { ListSalesDto } from './dto/list-sales.dto';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { priceLine } from './pricing';
 import { SettingsService } from '../settings/settings.service';
+import { displayStatus, EtimsService } from '../etims/etims.service';
 
 const D = (v: Prisma.Decimal | string | number) => new Prisma.Decimal(v);
 
@@ -30,6 +31,7 @@ const saleInclude = {
   payments: true,
   cashier: { select: { id: true, name: true } },
   customer: { select: { id: true, name: true, phone: true } },
+  taxInvoices: { select: { type: true, status: true, environment: true } },
 } satisfies Prisma.SaleInclude;
 
 @Injectable()
@@ -41,6 +43,7 @@ export class SalesService {
     private readonly inventory: InventoryService,
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
+    private readonly etims: EtimsService,
   ) {
     this.prefix = this.config.get<string>('RECEIPT_PREFIX', 'RCP');
   }
@@ -57,18 +60,25 @@ export class SalesService {
     return m ? Number(m[1]) : undefined;
   }
 
-  // Adds the prefixed number, and hides cost from cashiers
+  // Adds the prefixed receipt number and the eTIMS status, and hides cost from cashiers
   private present<
-    S extends { receiptNumber: number; items: { unitCost?: unknown }[] },
+    S extends {
+      receiptNumber: number;
+      items: { unitCost?: unknown }[];
+      taxInvoices?: { type: string; status: string; environment: string }[];
+    },
   >(sale: S, actor: AuthUser) {
     const items =
       actor.role === Role.CASHIER
         ? sale.items.map(({ unitCost, ...rest }) => rest)
         : sale.items;
+    const { taxInvoices, ...rest } = sale; // the raw invoice rows stay out of the response
+    const invoice = taxInvoices?.find((t) => t.type === 'SALE') ?? null;
     return {
-      ...sale,
+      ...rest,
       items,
       receiptNo: this.formatReceipt(sale.receiptNumber),
+      etims: displayStatus(invoice),
     };
   }
 
@@ -151,22 +161,26 @@ export class SalesService {
       if (!customer) throw new NotFoundException('Customer not found');
     }
 
+    const rates = await this.etims.taxRates(tx); // Map<TaxTypeCode, Decimal>
+
     // 2. Price the lines. Shelf prices are VAT-inclusive: extract tax from them.
     let total = D(0);
     let taxTotal = D(0);
     const lines = ids.map((id) => {
       const p = byId.get(id)!;
       const quantity = qtyById.get(id)!;
-      const { lineTotal, taxAmount } = priceLine(p.price, p.taxRate, quantity);
+      const rate = rates.get(p.taxTyCd) ?? D(0);
+      const { lineTotal, taxAmount } = priceLine(p.price, rate, quantity);
       total = total.add(lineTotal);
       taxTotal = taxTotal.add(taxAmount);
       return {
         productId: id,
-        productName: p.name, // snapshots: later edits never rewrite history
+        productName: p.name,
         quantity,
         unitPrice: p.price,
         unitCost: p.costPrice,
-        taxRate: p.taxRate,
+        taxRate: rate,
+        taxTyCd: p.taxTyCd, // new: snapshot of the class at the time of sale
         taxAmount,
         lineTotal,
       };
@@ -308,6 +322,27 @@ export class SalesService {
       });
     }
 
+    await this.etims.enqueueSaleInvoice(tx, {
+      saleId: sale.id,
+      internalNo: this.formatReceipt(sale.receiptNumber),
+      createdAt: sale.createdAt,
+      cashier: { id: actor.id, name: actor.name },
+      methods: dto.payments.map((p) => p.method),
+      customerPin: dto.customerPin,
+      customerName: dto.customerName,
+      lines: lines.map((l) => ({
+        productId: l.productId,
+        name: l.productName,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        lineTotal: l.lineTotal,
+        taxAmount: l.taxAmount,
+        taxTyCd: l.taxTyCd,
+      })),
+      products: new Map(products.map((p) => [p.id, p])),
+      rates,
+    });
+
     return tx.sale.findUniqueOrThrow({
       where: { id: sale.id },
       include: saleInclude,
@@ -370,11 +405,68 @@ export class SalesService {
   }
 
   async receipt(id: string, actor: AuthUser) {
-    const [sale, store] = await Promise.all([
-      this.findOne(id, actor),
+    const [sale, store, inv] = await Promise.all([
+      this.findOne(id, actor), // also enforces "cashiers only see their own sales"
       this.settings.get(),
+      this.prisma.taxInvoice.findUnique({
+        where: { saleId_type: { saleId: id, type: 'SALE' } },
+      }),
     ]);
+
+    // VAT by tax class, so exempt, zero-rated and non-VAT lines are visible, not hidden inside one total
+    const groups = new Map<
+      string,
+      {
+        code: string;
+        rate: Prisma.Decimal;
+        gross: Prisma.Decimal;
+        vat: Prisma.Decimal;
+      }
+    >();
+    for (const i of sale.items) {
+      const g = groups.get(i.taxTyCd) ?? {
+        code: i.taxTyCd,
+        rate: i.taxRate,
+        gross: D(0),
+        vat: D(0),
+      };
+      g.gross = g.gross.add(i.lineTotal);
+      g.vat = g.vat.add(i.taxAmount);
+      groups.set(i.taxTyCd, g);
+    }
+    const taxBreakdown = [...groups.values()]
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map((g) => ({
+        code: g.code,
+        rate: g.rate.toString(),
+        net: g.gross.sub(g.vat).toFixed(2),
+        vat: g.vat.toFixed(2),
+        gross: g.gross.toFixed(2),
+      }));
+
+    // KRA's identifiers are only ever shown once KRA has actually confirmed the invoice
+    const confirmed = inv?.status === 'ACCEPTED';
+    const etims = inv
+      ? {
+          status: displayStatus(inv),
+          environment: inv.environment,
+          tin: (inv.payload as { tin?: string } | null)?.tin ?? null,
+          invoiceNo: confirmed ? inv.invcNo : null,
+          scuReceiptNo: confirmed ? inv.receiptNo : null,
+          scuTotalReceiptNo: confirmed ? inv.totalReceiptNo : null,
+          sdcId: confirmed ? inv.sdcId : null,
+          mrcNo: confirmed ? inv.mrcNo : null,
+          sdcDateTime: confirmed ? inv.sdcDateTime : null,
+          internalData: confirmed ? inv.intrlData : null,
+          signature: confirmed ? inv.rcptSign : null,
+          qrPayload: confirmed ? inv.qrPayload : null,
+          acceptedAt: inv.acceptedAt,
+          copy: inv.officialPrintCount, // earlier official prints; above 0 means this print is a COPY
+        }
+      : null;
+
     return {
+      saleId: sale.id,
       store: {
         name: store.name,
         address: store.address,
@@ -386,15 +478,18 @@ export class SalesService {
       date: sale.createdAt,
       status: sale.status,
       cashier: sale.cashier.name,
-      customer: sale.customer?.name ?? null,
+      customer: sale.customer?.name ?? inv?.customerName ?? null,
+      customerPin: inv?.customerPin ?? null,
       items: sale.items.map((i) => ({
         name: i.productName,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         lineTotal: i.lineTotal,
+        taxTyCd: i.taxTyCd,
       })),
-      subtotal: sale.subtotal, // excluding VAT
-      taxTotal: sale.taxTotal, // VAT included in the total
+      taxBreakdown,
+      subtotal: sale.subtotal, // net of VAT
+      taxTotal: sale.taxTotal,
       total: sale.total,
       payments: sale.payments.map((p) => ({
         method: p.method,
@@ -403,9 +498,9 @@ export class SalesService {
         tendered: p.tendered,
       })),
       changeDue: sale.payments.reduce((s, p) => s.add(p.change ?? 0), D(0)),
+      etims,
     };
   }
-
   // ---------- void ----------
 
   async voidSale(id: string, dto: VoidSaleDto, actor: AuthUser) {
@@ -431,6 +526,8 @@ export class SalesService {
           `Sale is already ${sale.status.toLowerCase()}`,
         );
       }
+
+      await this.etims.onSaleVoided(tx, id, actor);
 
       const items = await tx.saleItem.findMany({
         where: { saleId: id },

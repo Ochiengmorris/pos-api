@@ -1,6 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { PrismaClient, Role, StockMovementType } from '@prisma/client';
+import {
+  PrismaClient,
+  Role,
+  StockMovementType,
+  TaxTypeCode,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -32,7 +37,7 @@ export async function createApp(): Promise<INestApplication> {
 export async function resetDb() {
   assertTestDb();
   await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "StockMovement","Payment","SaleItem","MpesaPayment","StoreSettings","Sale","Customer","Product","Category","User" RESTART IDENTITY CASCADE`,
+    `TRUNCATE TABLE "StockMovement","Payment","SaleItem","AuditLog","MpesaPayment","StoreSettings","Sale","Customer","Product","TaxInvoice","EtimsJob","EtimsEvent","EtimsSequence","TaxType","Category","User" RESTART IDENTITY CASCADE`,
   );
 }
 
@@ -66,6 +71,21 @@ export async function seedBasics() {
       reason: 'Opening stock',
     },
   });
+
+  const taxTypes: { code: TaxTypeCode; name: string; rate: number }[] = [
+    { code: 'A', name: 'A - Exempt', rate: 0 },
+    { code: 'B', name: 'B - Standard rate', rate: 16 },
+    { code: 'C', name: 'C - Zero-rated', rate: 0 },
+    { code: 'D', name: 'D - Non-VAT', rate: 0 },
+    { code: 'E', name: 'E - Reduced rate', rate: 8 },
+  ];
+  for (const t of taxTypes) {
+    await prisma.taxType.upsert({
+      where: { code: t.code },
+      update: {},
+      create: t,
+    });
+  }
   return { admin, cashier1, cashier2, product };
 }
 

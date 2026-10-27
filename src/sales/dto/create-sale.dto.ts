@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
@@ -76,4 +77,16 @@ export class CreateSaleDto {
   @IsString()
   @MaxLength(64)
   clientRequestId?: string;
+
+  // a business customer's KRA PIN, so they can claim the purchase
+  @IsOptional()
+  @Matches(/^[AP]\d{9}[A-Z]$/, {
+    message: 'customerPin must be a valid KRA PIN',
+  })
+  customerPin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  customerName?: string;
 }
