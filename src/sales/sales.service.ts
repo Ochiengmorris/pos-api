@@ -23,6 +23,7 @@ import { VoidSaleDto } from './dto/void-sale.dto';
 import { priceLine } from './pricing';
 import { SettingsService } from '../settings/settings.service';
 import { displayStatus, EtimsService } from '../etims/etims.service';
+import { CashService } from '../cash/cash.service';
 
 const D = (v: Prisma.Decimal | string | number) => new Prisma.Decimal(v);
 
@@ -44,6 +45,7 @@ export class SalesService {
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
     private readonly etims: EtimsService,
+    private readonly cash: CashService,
   ) {
     this.prefix = this.config.get<string>('RECEIPT_PREFIX', 'RCP');
   }
@@ -85,6 +87,7 @@ export class SalesService {
   // ---------- checkout ----------
 
   async create(dto: CreateSaleDto, actor: AuthUser) {
+    await this.cash.requireOpenShift(actor.id);
     const replay = await this.findReplay(dto.clientRequestId, actor);
     if (replay) return this.present(replay, actor);
 

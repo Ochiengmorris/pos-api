@@ -88,6 +88,23 @@ enum EtimsJobStatus {
   CANCELLED
 }
 
+enum StockCountStatus {
+  OPEN
+  APPLIED
+  CANCELLED
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  PAID_OUT
+  CASH_DROP
+  CASH_IN
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -103,6 +120,7 @@ model User {
   sales          Sale[]
   stockMovements StockMovement[]
   mpesaPayments  MpesaPayment[]
+  cashShifts     CashShift[]
 }
 
 model Category {
@@ -131,12 +149,13 @@ model Product {
   saleItems      SaleItem[]
   stockMovements StockMovement[]
 
-  taxTyCd        TaxTypeCode @default(B)
-  taxConfirmed   Boolean     @default(false) // the owner/accountant has reviewed this product's VAT class
-  etimsSeq       Int         @unique @default(autoincrement())
+  taxTyCd        TaxTypeCode      @default(B)
+  taxConfirmed   Boolean          @default(false) // the owner/accountant has reviewed this product's VAT class
+  etimsSeq       Int              @unique @default(autoincrement())
   etimsItemClsCd String? // KRA item classification (needed for live item registration)
-  pkgUnitCd      String      @default("NT")
-  qtyUnitCd      String      @default("U")
+  pkgUnitCd      String           @default("NT")
+  qtyUnitCd      String           @default("U")
+  countLines     StockCountLine[]
 
   @@index([name])
   @@index([categoryId])
@@ -386,4 +405,72 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([entity, entityId, createdAt])
+}
+
+model StockCount {
+  id          String           @id @default(cuid())
+  number      Int              @unique @default(autoincrement())
+  name        String
+  status      StockCountStatus @default(OPEN)
+  categoryId  String? // null = the whole shop
+  note        String?
+  createdById String
+  createdAt   DateTime         @default(now())
+  appliedAt   DateTime?
+  appliedById String?
+  lines       StockCountLine[]
+
+  @@index([status, createdAt])
+}
+
+model StockCountLine {
+  id          String     @id @default(cuid())
+  countId     String
+  count       StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product    @relation(fields: [productId], references: [id])
+  countedQty  Int
+  systemQty   Int // what the system showed the moment this was counted
+  countedAt   DateTime   @default(now())
+  countedById String
+
+  @@unique([countId, productId])
+  @@index([productId])
+}
+
+model CashShift {
+  id           String         @id @default(cuid())
+  number       Int            @unique @default(autoincrement())
+  cashierId    String
+  cashier      User           @relation(fields: [cashierId], references: [id])
+  status       ShiftStatus    @default(OPEN)
+  openedAt     DateTime       @default(now())
+  openingFloat Decimal        @db.Decimal(12, 2)
+  closedAt     DateTime?
+  closedById   String?
+  expectedCash Decimal?       @db.Decimal(12, 2) // frozen at close
+  countedCash  Decimal?       @db.Decimal(12, 2)
+  variance     Decimal?       @db.Decimal(12, 2) // counted minus expected
+  closeNote    String?
+  closeSummary Json? // the figures as they were at close
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewNote   String?
+  movements    CashMovement[]
+
+  @@index([cashierId, status])
+  @@index([openedAt])
+}
+
+model CashMovement {
+  id          String           @id @default(cuid())
+  shiftId     String
+  shift       CashShift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  type        CashMovementType
+  amount      Decimal          @db.Decimal(12, 2)
+  reason      String
+  createdById String
+  createdAt   DateTime         @default(now())
+
+  @@index([shiftId])
 }

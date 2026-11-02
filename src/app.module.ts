@@ -19,6 +19,8 @@ import { SettingsModule } from './settings/settings.module';
 import { PasswordChangeGuard } from './auth/guards/password-change.guard';
 import { EtimsModule } from './etims/etims.module';
 import { validateEnv } from './config/env.validation';
+import { StockCountModule } from './stock-count/stock-count.module';
+import { CashModule } from './cash/cash.module';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { validateEnv } from './config/env.validation';
     ReportsModule,
     SettingsModule,
     EtimsModule,
+    StockCountModule,
+    CashModule,
   ],
   controllers: [HealthController],
   providers: [

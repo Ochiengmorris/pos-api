@@ -4,9 +4,10 @@ import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 import { SettingsModule } from '../settings/settings.module';
 import { EtimsModule } from '../etims/etims.module';
+import { CashModule } from '../cash/cash.module';
 
 @Module({
-  imports: [InventoryModule, SettingsModule, EtimsModule],
+  imports: [InventoryModule, SettingsModule, EtimsModule, CashModule],
   controllers: [SalesController],
   providers: [SalesService],
 })
