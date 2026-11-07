@@ -19,6 +19,17 @@ export function validateEnv(env: Record<string, unknown>) {
     errors.push('ETIMS_TIN is required when ETIMS_PROVIDER=oscu');
   }
 
+  if (String(env.C2B_ENABLED) === 'true') {
+    if (String(env.C2B_CALLBACK_TOKEN ?? '').length < 24)
+      errors.push(
+        'C2B_CALLBACK_TOKEN must be at least 24 characters when C2B_ENABLED=true',
+      );
+    if (!env.C2B_SHORTCODE)
+      errors.push('C2B_SHORTCODE is required when C2B_ENABLED=true');
+    if (!env.C2B_TILL_NUMBER)
+      errors.push('C2B_TILL_NUMBER is required when C2B_ENABLED=true');
+  }
+
   if (env.NODE_ENV === 'production') {
     if (secret.length < 32)
       errors.push('JWT_SECRET must be at least 32 characters in production');

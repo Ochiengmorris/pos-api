@@ -24,6 +24,7 @@ import { priceLine } from './pricing';
 import { SettingsService } from '../settings/settings.service';
 import { displayStatus, EtimsService } from '../etims/etims.service';
 import { CashService } from '../cash/cash.service';
+import { TillPaymentsService } from '../till-payments/till-payments.service';
 
 const D = (v: Prisma.Decimal | string | number) => new Prisma.Decimal(v);
 
@@ -46,6 +47,7 @@ export class SalesService {
     private readonly settings: SettingsService,
     private readonly etims: EtimsService,
     private readonly cash: CashService,
+    private readonly tillPayments: TillPaymentsService,
   ) {
     this.prefix = this.config.get<string>('RECEIPT_PREFIX', 'RCP');
   }
@@ -222,6 +224,23 @@ export class SalesService {
         };
       }
 
+      if (p.tillTransId && p.mpesaPaymentId) {
+        throw new BadRequestException(
+          'Use either an STK payment or a till payment, not both, on one line',
+        );
+      }
+      if (p.tillTransId && p.method !== PaymentMethod.MPESA) {
+        throw new BadRequestException('tillTransId only applies to M-Pesa');
+      }
+      if (p.method === PaymentMethod.MPESA && p.tillTransId) {
+        return {
+          method: p.method,
+          status: PaymentStatus.SUCCESS,
+          amount,
+          reference: p.tillTransId.trim().toUpperCase(),
+        };
+      }
+
       if (p.method === PaymentMethod.MPESA && p.mpesaPaymentId) {
         const rec = mpesaRecords.get(p.mpesaPaymentId);
         if (!rec) throw new NotFoundException('M-Pesa payment not found');
@@ -311,6 +330,17 @@ export class SalesService {
       if (claimed.count !== 1) {
         throw new ConflictException('M-Pesa payment already used on a sale');
       }
+    }
+
+    // 4c. Claim each till payment. Any failure rolls the whole sale back.
+    for (const p of dto.payments) {
+      if (!p.tillTransId) continue;
+      await this.tillPayments.claimForSale(tx, {
+        transId: p.tillTransId,
+        saleId: sale.id,
+        amount: p.amount,
+        userId: actor.id,
+      });
     }
 
     // 5. Deduct stock. Throws (and rolls everything back) if any line is short.
@@ -531,6 +561,7 @@ export class SalesService {
       }
 
       await this.etims.onSaleVoided(tx, id, actor);
+      await this.tillPayments.releaseForSale(tx, id);
 
       const items = await tx.saleItem.findMany({
         where: { saleId: id },

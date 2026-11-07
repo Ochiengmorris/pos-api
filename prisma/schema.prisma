@@ -105,6 +105,13 @@ enum CashMovementType {
   CASH_IN
 }
 
+enum TillPaymentStatus {
+  UNCLAIMED // arrived from Safaricom, not yet attached to a sale
+  CLAIMED // attached to a sale at the till
+  MATCHED_STK // it was an STK push payment, already recorded on its sale
+  IGNORED // a manager set it aside, with a reason
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -473,4 +480,29 @@ model CashMovement {
   createdAt   DateTime         @default(now())
 
   @@index([shiftId])
+}
+
+model TillPayment {
+  id            String            @id @default(cuid())
+  transId       String            @unique // Safaricom's M-Pesa code, e.g. QGH7XYZ123. Unique, so a replayed callback cannot double-count.
+  transTime     DateTime // when the customer paid (Safaricom's clock)
+  amount        Decimal           @db.Decimal(12, 2)
+  shortCode     String
+  billRef       String? // account number (paybill only; empty for a till)
+  payerName     String?
+  payerPhone    String? // exactly as Safaricom sent it (masked or hashed)
+  rawPayload    Json
+  status        TillPaymentStatus @default(UNCLAIMED)
+  reservedById  String? // a cashier who has picked it and is finishing the sale
+  reservedUntil DateTime?
+  claimedById   String?
+  claimedAt     DateTime?
+  saleId        String?
+  ignoredById   String?
+  ignoredReason String?
+  note          String?
+  createdAt     DateTime          @default(now())
+
+  @@index([status, createdAt])
+  @@index([transTime])
 }
