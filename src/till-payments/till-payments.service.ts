@@ -243,7 +243,7 @@ export class TillPaymentsService {
     const rows = await this.prisma.tillPayment.findMany({
       where: {
         status: 'UNCLAIMED',
-        createdAt: { gte: since },
+        transTime: { gte: since },
         AND: [
           {
             OR: [
@@ -255,7 +255,7 @@ export class TillPaymentsService {
           q.code ? { transId: { endsWith: q.code, mode: 'insensitive' } } : {},
         ],
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { transTime: 'desc' },
       take: 30,
     });
 
