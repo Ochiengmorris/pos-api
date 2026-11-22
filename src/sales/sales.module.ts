@@ -5,9 +5,16 @@ import { SalesService } from './sales.service';
 import { SettingsModule } from '../settings/settings.module';
 import { EtimsModule } from '../etims/etims.module';
 import { CashModule } from '../cash/cash.module';
+import { TillPaymentsModule } from '../till-payments/till-payments.module';
 
 @Module({
-  imports: [InventoryModule, SettingsModule, EtimsModule, CashModule],
+  imports: [
+    InventoryModule,
+    SettingsModule,
+    EtimsModule,
+    CashModule,
+    TillPaymentsModule,
+  ],
   controllers: [SalesController],
   providers: [SalesService],
 })

@@ -46,6 +46,13 @@ export class SalePaymentDto {
   @IsString()
   mpesaPaymentId?: string;
 
+  // M-Pesa code of a payment the customer made straight to the till (Daraja C2B).
+  // Pick it from the till-pay panel; the server re-checks it when the sale is saved.
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9]{6,20}$/)
+  tillTransId?: string;
+
   // M-Pesa receipt code or card reference. Required for non-cash.
   @IsOptional()
   @IsString()

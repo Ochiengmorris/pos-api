@@ -21,6 +21,7 @@ import { EtimsModule } from './etims/etims.module';
 import { validateEnv } from './config/env.validation';
 import { StockCountModule } from './stock-count/stock-count.module';
 import { CashModule } from './cash/cash.module';
+import { TillPaymentsModule } from './till-payments/till-payments.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { CashModule } from './cash/cash.module';
     EtimsModule,
     StockCountModule,
     CashModule,
+    TillPaymentsModule,
   ],
   controllers: [HealthController],
   providers: [
